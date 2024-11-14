@@ -24,11 +24,43 @@ def prepare_tables() -> None:
     # Все запросы к базе делаются через курсор
     cursor = get_db().cursor()
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS cats (
+        CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name VARCHAR(128) NOT NULL                 
+            name VARCHAR(128) NOT NULL,
+            email VARCHAR(128) NOT NULL,
+            password_hash VARCHAR(128) NOT NULL
         );
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sessions (
+            user_id INTEGER NOT NULL,
+            session_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            FOREIGN KEY (user_id) REFERENCES users (id)
+        );
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS shares (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            book_id INTEGER NOT NULL,
+            giver_id INTEGER NOT NULL,
+            taker_id INTEGER NOT NULL,
+            final_date DATE,
+            FOREIGN KEY (book_id) REFERENCES books (id),
+            FOREIGN KEY (giver_id) REFERENCES users (id),
+            FOREIGN KEY (taker_id) REFERENCES users (id)
+        );
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS books (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title VARCHAR(128) NOT NULL,
+            authot VARCHAR(128) NOT NULL,
+            release_year INTEGER NOT NULL,
+            owner_id INTEGER NOT NULL,
+            FOREIGN KEY (owner_id) REFERENCES users (id)
+        );
+    """)
+
 
 def run_app() -> None:
     # Просто запускаем наше приложение
@@ -44,32 +76,20 @@ def run_app() -> None:
 def index():
     return 'Hello from Solaris app'
 
-@solaris_app.route('/cats', methods=['GET'])
-def list_cats():
-    # Вытаскиваем из базы всех котов
-    cursor = get_db().cursor();
-    cats = cursor.execute("""
-        SELECT name FROM cats;
-    """)
+@solaris_app.route('/register', methods=['POST'])
+def register():
+    email = request.json['email']
+    name = request.json['name']
+    password = request.json['password']
 
-    # И делаем список из их имён
-    response = ''
-    for cat in cats.fetchall():
-        response += f'<p>Котик {cat[0]}</p>'
-
-    return response
-
-@solaris_app.route('/cat/<name>', methods=['POST'])
-def add_cat(name: str):
-    # Кладём в базу нового кота
-    # Вместо ? будет подставлено то, что лежит в name
     cursor = get_db().cursor()
-    cursor.execute("""
-        INSERT INTO cats (name) VALUES (?);
-    """, (name,))
+    user = cursor.execute(f'SELECT * FROM users WHERE email="{email}";').fetchone()
+    if user is not None:
+        return 'User already exists', 400
+    cursor.execute(f'INSERT INTO users (email, name, password_hash) VALUES ("{email}", "{name}", "{password}");')
+    cursor.close()
     get_db().commit()
-
-    return '', 201
+    return 'Created', 201
 
 #####################
 
