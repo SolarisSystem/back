@@ -1,4 +1,4 @@
-from flask import Flask, g
+from flask import Flask, g, request, jsonify
 from os import getenv
 from sqlite3 import connect
 
@@ -28,7 +28,7 @@ def prepare_tables() -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name VARCHAR(128) NOT NULL,
             email VARCHAR(128) NOT NULL,
-            password_hash VARCHAR(128) NOT NULL
+            password VARCHAR(128) NOT NULL
         );
     """)
     cursor.execute("""
@@ -72,6 +72,48 @@ def run_app() -> None:
 
 #####################
 
+def get_user_by_id(user_id):
+    cursor = get_db().cursor()
+
+    user = cursor.execute(f"SELECT * FROM users WHERE id={user_id};").fetchone()
+    cursor.close()
+
+    return user
+
+
+def get_user_by_session_id(session_id):
+    cursor = get_db().cursor()
+
+    user_id = cursor.execute(f"SELECT user_id FROM sessions WHERE session_id={session_id};").fetchone()
+    cursor.close()
+
+    if user_id is None:
+        return None
+    return get_user_by_id(user_id[0])
+
+
+def validate_session_id(session_id):
+    return get_user_by_session_id(session_id) is not None
+
+
+####################
+
+def is_auth_valid():
+    if 'SessionID' in request.headers:
+        return validate_session_id(request.headers.get('SessionID'))
+    return False
+
+####################
+
+def user_row_to_dict(user_row):
+    return {
+        'id': user_row[0],
+        'name': user_row[1],
+        'email': user_row[2]
+    }
+
+#####################
+
 @solaris_app.route('/', methods=['GET'])
 def index():
     return 'Hello from Solaris app'
@@ -86,10 +128,38 @@ def register():
     user = cursor.execute(f'SELECT * FROM users WHERE email="{email}";').fetchone()
     if user is not None:
         return 'User already exists', 400
-    cursor.execute(f'INSERT INTO users (email, name, password_hash) VALUES ("{email}", "{name}", "{password}");')
+    cursor.execute(f'INSERT INTO users (email, name, password) VALUES ("{email}", "{name}", "{password}");')
     cursor.close()
     get_db().commit()
     return 'Created', 201
+
+@solaris_app.route('/login', methods=['POST'])
+def login():
+    email = request.json['email']
+    password = request.json['password']
+
+    cursor = get_db().cursor()
+    user = cursor.execute(f'SELECT * FROM users WHERE email="{email}" and password="{password}";').fetchone()
+    print(user)
+    if user is None:
+       return 'Доступ запрещен', 403
+
+    cursor.execute(f'INSERT INTO sessions (user_id) VALUES ("{user[0]}");')
+    
+    cursor.close()
+    get_db().commit()
+
+    return jsonify({'user_id': user[0], 'session_id':cursor.lastrowid}), 200
+
+@solaris_app.route('/user/<int:user_id>')
+def get_user(user_id):
+    if not is_auth_valid():
+        return 'Request denied, invalid session', 403
+    
+    user = get_user_by_id(user_id)
+    if user is None:
+        return 'User not found', 404
+    return jsonify(user_row_to_dict(user)), 200
 
 #####################
 
