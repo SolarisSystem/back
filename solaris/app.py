@@ -161,6 +161,24 @@ def get_user(user_id):
         return 'User not found', 404
     return jsonify(user_row_to_dict(user)), 200
 
+@solaris_app.route('/users')
+def get_users():
+    cursor = get_db().cursor()
+    users = cursor.execute("SELECT * FROM users;").fetchall()
+    cursor.close()
+    
+    res = []
+    for u in users:
+        res.append(user_row_to_dict(u))
+
+    response = {
+        'users': res
+    }
+
+    return jsonify(response), 200
+
+# SELECT * FROM users;
+
 #####################
 
 if __name__ == '__main__':
